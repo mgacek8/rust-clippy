@@ -2006,11 +2006,16 @@ fn lint_or_fun_call<'tcx>(
 
             then {
                 let sugg: Cow<'_, str> = {
-                    let (snippet_span, use_lambda) = match (fn_has_arguments, fun_span) {
-                        (false, Some(fun_span)) => (fun_span, false),
-                        _ => (arg.span, true),
+                    let snippet_span = match (fn_has_arguments, fun_span) {
+                        (false, Some(fun_span)) => fun_span,
+                        _ => arg.span,
                     };
                     let snippet = snippet_with_macro_callsite(cx, snippet_span, "..");
+                    let use_lambda = match (fn_has_arguments, fun_span) {
+                        (false, Some(_)) if snippet != "vec![]" => false,
+                        _ => true,
+                    };
+
                     if use_lambda {
                         let l_arg = if fn_has_arguments { "_" } else { "" };
                         format!("|{}| {}", l_arg, snippet).into()
