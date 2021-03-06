@@ -1619,7 +1619,6 @@ impl<'tcx> LateLintPass<'tcx> for Methods {
         let (method_names, arg_lists, method_spans) = method_calls(expr, 2);
         let method_names: Vec<SymbolStr> = method_names.iter().map(|s| s.as_str()).collect();
         let method_names: Vec<&str> = method_names.iter().map(|s| &**s).collect();
-
         match method_names.as_slice() {
             ["unwrap", "get"] => lint_get_unwrap(cx, expr, arg_lists[1], false),
             ["unwrap", "get_mut"] => lint_get_unwrap(cx, expr, arg_lists[1], true),
@@ -1656,12 +1655,21 @@ impl<'tcx> LateLintPass<'tcx> for Methods {
             ["flat_map", "filter_map"] => lint_filter_map_flat_map(cx, expr, arg_lists[1], arg_lists[0]),
             ["flat_map", ..] => lint_flat_map_identity(cx, expr, arg_lists[0], method_spans[0]),
             ["flatten", "map"] => lint_map_flatten(cx, expr, arg_lists[1]),
-            ["is_some", "find"] => lint_search_is_some(cx, expr, "find", arg_lists[1], arg_lists[0], method_spans[1]),
+            ["is_some", "find"] => lint_search_is_some(cx, expr, "find", "is_some", arg_lists[1], arg_lists[0], method_spans[1]),
             ["is_some", "position"] => {
-                lint_search_is_some(cx, expr, "position", arg_lists[1], arg_lists[0], method_spans[1])
+                lint_search_is_some(cx, expr, "position","is_some", arg_lists[1], arg_lists[0], method_spans[1])
             },
             ["is_some", "rposition"] => {
-                lint_search_is_some(cx, expr, "rposition", arg_lists[1], arg_lists[0], method_spans[1])
+                lint_search_is_some(cx, expr, "rposition","is_some", arg_lists[1], arg_lists[0], method_spans[1])
+            },
+            ["is_none", "find"] => {
+                lint_search_is_some(cx, expr, "find", "is_none", arg_lists[1], arg_lists[0], method_spans[1])
+            },
+            ["is_none", "position"] => {
+                lint_search_is_some(cx, expr, "position", "is_none", arg_lists[1], arg_lists[0], method_spans[1])
+            },
+            ["is_none", "rposition"] => {
+                lint_search_is_some(cx, expr, "rposition", "is_none", arg_lists[1], arg_lists[0], method_spans[1])
             },
             ["extend", ..] => lint_extend(cx, expr, arg_lists[0]),
             ["nth", "iter"] => lint_iter_nth(cx, expr, &arg_lists, false),
@@ -3330,17 +3338,25 @@ fn lint_search_is_some<'tcx>(
     cx: &LateContext<'tcx>,
     expr: &'tcx hir::Expr<'_>,
     search_method: &str,
+    option_check_method: &str,
     search_args: &'tcx [hir::Expr<'_>],
     is_some_args: &'tcx [hir::Expr<'_>],
     method_span: Span,
 ) {
+    let negation_needed = option_check_method == "is_none";
+
     // lint if caller of search is an Iterator
     if match_trait_method(cx, &is_some_args[0], &paths::ITERATOR) {
         let msg = format!(
-            "called `is_some()` after searching an `Iterator` with `{}`",
-            search_method
+            "called `{}()` after searching an `Iterator` with `{}`",
+            option_check_method, search_method
         );
-        let hint = "this is more succinctly expressed by calling `any()`";
+        let method_suggestion = if negation_needed {
+            "!any"
+        }
+        else {
+            "any"
+        };
         let search_snippet = snippet(cx, search_args[1].span, "..");
         if search_snippet.lines().count() <= 1 {
             // suggest `any(|x| ..)` instead of `any(|&x| ..)` for `find(|&x| ..).is_some()`
@@ -3363,21 +3379,23 @@ fn lint_search_is_some<'tcx>(
                     None
                 }
             };
+
             // add note if not multi-line
             span_lint_and_sugg(
                 cx,
                 SEARCH_IS_SOME,
                 method_span.with_hi(expr.span.hi()),
                 &msg,
-                "use `any()` instead",
+                &format!("use `{}()` instead", method_suggestion),
                 format!(
-                    "any({})",
-                    any_search_snippet.as_ref().map_or(&*search_snippet, String::as_str)
+                    "{}({})",
+                    method_suggestion, any_search_snippet.as_ref().map_or(&*search_snippet, String::as_str)
                 ),
                 Applicability::MachineApplicable,
             );
         } else {
-            span_lint_and_help(cx, SEARCH_IS_SOME, expr.span, &msg, None, hint);
+            let hint = format!("this is more succinctly expressed by calling `{}()`", method_suggestion);
+            span_lint_and_help(cx, SEARCH_IS_SOME, expr.span, &msg, None, &hint);
         }
     }
     // lint if `find()` is called by `String` or `&str`
@@ -3394,16 +3412,23 @@ fn lint_search_is_some<'tcx>(
             if is_string_or_str_slice(&search_args[0]);
             if is_string_or_str_slice(&search_args[1]);
             then {
-                let msg = "called `is_some()` after calling `find()` on a string";
+                let method_suggestion = if negation_needed {
+                    "!contains"
+                }
+                else {
+                    "contains"
+                };
+
+                let msg = format!("called `{}()` after calling `find()` on a string", option_check_method);
                 let mut applicability = Applicability::MachineApplicable;
                 let find_arg = snippet_with_applicability(cx, search_args[1].span, "..", &mut applicability);
                 span_lint_and_sugg(
                     cx,
                     SEARCH_IS_SOME,
                     method_span.with_hi(expr.span.hi()),
-                    msg,
-                    "use `contains()` instead",
-                    format!("contains({})", find_arg),
+                    &msg,
+                    &format!("use `{}()` instead", method_suggestion),
+                    format!("{}({})", method_suggestion, find_arg),
                     applicability,
                 );
             }

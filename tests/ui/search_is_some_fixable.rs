@@ -12,16 +12,24 @@ fn main() {
     let _ = (0..1).find(|x| *x == 0).is_some();
     let _ = v.iter().find(|x| **x == 0).is_some();
 
+    let _ = v.iter().find(|x| **x == 0).is_none();
+
     // Check `position().is_some()`, single-line case.
     let _ = v.iter().position(|&x| x < 0).is_some();
 
+    let _ = v.iter().position(|&x| x < 0).is_none();
+
     // Check `rposition().is_some()`, single-line case.
     let _ = v.iter().rposition(|&x| x < 0).is_some();
+
+    let _ = v.iter().rposition(|&x| x < 0).is_none();
 
     let s1 = String::from("hello world");
     let s2 = String::from("world");
     // caller of `find()` is a `&`static str`
     let _ = "hello world".find("world").is_some();
+    let _ = "hello world".find("world").is_none();
+
     let _ = "hello world".find(&s2).is_some();
     let _ = "hello world".find(&s2[2..]).is_some();
     // caller of `find()` is a `String`
