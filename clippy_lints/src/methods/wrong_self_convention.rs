@@ -1,5 +1,5 @@
 use crate::methods::SelfKind;
-use crate::utils::span_lint;
+use crate::utils::{span_lint,is_copy};
 use rustc_lint::LateContext;
 use rustc_middle::ty::TyS;
 use rustc_span::source_map::Span;
@@ -56,7 +56,14 @@ pub(super) fn check<'tcx>(
         WRONG_SELF_CONVENTION
     };
     if let Some((ref conv, self_kinds)) = &CONVENTIONS.iter().find(|(ref conv, _)| conv.check(item_name)) {
-        if !self_kinds.iter().any(|k| k.matches(cx, self_ty, first_arg_ty)) {
+        if !self_kinds.iter().any(|self_kind| self_kind.matches(cx, self_ty, first_arg_ty)) {
+            dbg!(&self_ty);
+            if self_ty.is_trait() && SelfKind::Value.matches(cx, self_ty, first_arg_ty) && is_copy(cx, self_ty) {
+                if let Convention::StartsWith("to_") = conv {
+                    return;
+                }
+            }
+
             span_lint(
                 cx,
                 lint,

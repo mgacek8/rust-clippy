@@ -163,3 +163,9 @@ mod issue6307 {
         fn to_mut(&mut self);
     }
 }
+
+mod issue6727{
+    trait F32Ext {
+        fn to_something_else(self) -> f32;
+    }
+}
